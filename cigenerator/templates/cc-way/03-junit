@@ -1,0 +1,117 @@
+
+### 03-junit ###
+
+- job-template:
+    name: '{folder}/{app}-JUNIT'
+    description: '{app} JUNIT'
+    display-name: '{app} JUNIT'
+    disabled: '{obj:disabled}'
+    block-upstream: true
+    block-downstream: true
+    logrotate:
+      numToKeep: 30
+    properties:
+      - authorization:
+          '{obj:authorization}'
+      - delivery-pipeline:
+          stage: 'TESTS'
+          task: 'JUNIT'
+    node: '{node}'
+    workspace: '/opt/workspace/{folder}/{app}-BUILD'
+    wrappers:
+      - config-file-provider:
+          files:
+            - file-id: org.jenkinsci.plugins.configfiles.maven.MavenSettingsConfig1450783552575
+              target: $HOME/.m2/settings.xml
+            - file-id: org.jenkinsci.plugins.configfiles.maven.MavenSettingsConfig1425458269792
+              target: $HOME/.m2/sonar.xml
+      - ansicolor:
+          colormap: xterm
+      - timestamps
+      - delivery-pipeline:
+          version-template: '$BRANCH-$PARSE_VERSION-$BUILD_GIT_COMMIT-b$BUILD_NUMBER'
+          set-display-name: true
+    builders:
+      - maven-builder:
+          name: slave::mvn
+          pom: "pom.xml"
+          goals: '-X -U test'
+      - maven-builder:
+          name: slave::mvn
+          pom: 'pom.xml'
+          goals: 'surefire-report:report'
+      {%- raw %}
+      - shell: |
+          echo "PARSE_VERSION=${{PARSE_VERSION}}" > "$WORKSPACE"/props_junit
+          echo "BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}" >> "$WORKSPACE"/props_junit
+          echo "BRANCH=${{BRANCH}}" >> "$WORKSPACE"/props_junit
+          echo "BUILD_NUMBER=${{BUILD_NUMBER}}" >> "$WORKSPACE"/props_junit
+          echo "TESTS_BRANCH=${{TESTS_BRANCH}}" >> "$WORKSPACE"/props_junit
+          {%- endraw %}
+          {%- for module in project.modules %}
+          echo "{{ module.name }}_MVN_NAME={% raw %}${{{% endraw %}{{ module.name }}_MVN_NAME}}" >> "$WORKSPACE"/props_build
+          echo "{{ module.name }}_MVN_VERSION={% raw %}${{{% endraw %}{{ module.name }}_MVN_VERSION}}" >> "$WORKSPACE"/props_build
+          {%- endfor %}
+    publishers:
+      - archive:
+          artifacts: '**/props_junit'
+      - junit:
+          results: '**/target/surefire-reports/*.xml'
+      - javadoc:
+          directory: oti-connector/target/apidocs
+          keep-all-successful: true
+      - html-publisher:
+          name: "JUnit report"
+          dir: "**/target/site/"
+          files: "surefire-report.html"
+          keep-all: true
+          allow-missing: true
+          link-to-last-build: true
+      - jacoco:
+          exec-pattern: "**/target/coverage-reports/*.exec"
+          class-pattern: "**/target/classes"
+          source-pattern: "**/src/main/java"
+          status-update: false
+          targets:
+            - branch:
+                healthy: 0
+                unhealthy: 0
+      {%- raw %}
+      - trigger-parameterized-builds:
+          - project:
+              - '{folder}/{app}-SONAR'
+            condition: SUCCESS
+            predefined-parameters: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}
+            node-parameters: true
+      {%- raw %}
+      - description-setter:
+          description: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}
+          {%- raw %}
+          description-for-failed: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}

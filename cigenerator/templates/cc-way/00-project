@@ -1,0 +1,76 @@
+
+### 00-project ###
+
+- project:
+    folder: {{ common.folder_name }}
+    app: {{ common.app_name }}
+    name: '{folder}/{app}'
+    display-name: '{app}'
+    disabled: false
+    {%- for repo in project.repositories %}
+    {{ repo.name }}_repo: {{ repo.repo }}
+    {{ repo.name }}_url: {{ repo.url }}
+    {%- endfor %}
+    node: {{ common.slave_nodes }}
+    authorization:
+        components-dev1:
+            - job-configure
+            - job-read
+            - job-extended-read
+            - job-discover
+            - job-build
+            - job-workspace
+            - job-cancel
+        components-integrators:
+            - job-delete
+            - job-configure
+            - job-read
+            - job-extended-read
+            - job-discover
+            - job-build
+            - job-workspace
+            - job-cancel
+        components-qa:
+            - job-configure
+            - job-read
+            - job-extended-read
+            - job-discover
+            - job-build
+            - job-workspace
+            - job-cancel
+    throttle_tests:
+      max-per-node: 1
+      categories:
+        - acceptanceTests
+      option: category
+    throttle_dockerize:
+      max-per-node: 1
+      categories:
+        - oti-dockerize
+      option: category
+    throttle_bbpr:
+      max-per-node: 1
+      categories:
+        - 'oti-dockerize'
+        - 'acceptanceTests'
+      option: category
+    jobs:
+      - '{folder}'
+
+      # PIPELINE
+      - '{folder}/{app}-SCM'
+      - '{folder}/{app}-BUILD'
+      - '{folder}/{app}-BUILD-NO-PUSH'
+      - '{folder}/{app}-JUNIT'
+      - '{folder}/{app}-SONAR'
+      - '{folder}/{app}-DOCKERIZE'
+      - '{folder}/{app}-{mock}-DOCKERIZE'
+      - '{folder}/{app}-INTEGRATION-TESTS-MARIADB'
+      - '{folder}/{app}-INTEGRATION-TESTS-MEMORY'
+      - '{folder}/{app}-INTEGRATION-TESTS-REDIS-CLUSTER'
+      - '{folder}/{app}-INTEGRATION-TESTS-REDIS-SENTINEL'
+      - '{folder}/{app}-BBPR'
+
+      # VIEWS
+      - '{folder}/{app}'
+      - '{folder}/BBPR'

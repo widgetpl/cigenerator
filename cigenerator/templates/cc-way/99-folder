@@ -1,0 +1,11 @@
+
+### 99-folder.yaml ###
+
+- job-template:
+    name: '{folder}'
+#    description: '{display-name} folder'
+    project-type: folder
+    primary-view: '{app}'
+    properties:
+      - folder-auth:
+          '{obj:authorization}'

@@ -1,0 +1,99 @@
+
+### 01-build ###
+
+{%- raw %}
+- job-template:
+    name: '{folder}/{app}-BUILD'
+    description: '{display-name} BUILD'
+    display-name: '{display-name} BUILD'
+    disabled: '{obj:disabled}'
+    logrotate:
+      numToKeep: 30
+    properties:
+      - authorization:
+          '{obj:authorization}'
+      - delivery-pipeline:
+          stage: 'BUILD'
+          task: 'BUILD WITH PUSH'
+    node: '{node}'
+    workspace: '/opt/workspace/{folder}/{app}-BUILD'
+    wrappers:
+      - config-file-provider:
+          files:
+            - file-id: org.jenkinsci.plugins.configfiles.maven.MavenSettingsConfig1450783552575
+              target: $HOME/.m2/settings.xml
+            - file-id: org.jenkinsci.plugins.configfiles.maven.MavenSettingsConfig1425458269792
+              target: $HOME/.m2/sonar.xml
+      - ansicolor:
+          colormap: xterm
+      - timestamps
+      - artifactory-maven3:
+          url: https://artifactory.otlabs.fr/artifactory
+          name: '2060568587@1425532156422'
+          deploy-snapshot-repo-key: libs-snapshot-local
+          deploy-release-repo-key: libs-release-local
+          filter-excluded-artifacts-from-build: true
+          publish-build-info: true
+      - delivery-pipeline:
+          version-template: '$BRANCH-$PARSE_VERSION-$BUILD_GIT_COMMIT-b$BUILD_NUMBER'
+          set-display-name: true
+    builders:
+      - shell: |
+          mvn help:evaluate -Dexpression=project.artifactId
+          touch "$WORKSPACE"/props_build
+          echo "PARSE_VERSION=${{PARSE_VERSION}}" > "$WORKSPACE"/props_build
+          echo "BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}" >> "$WORKSPACE"/props_build
+          echo "BRANCH=${{BRANCH}}" >> "$WORKSPACE"/props_build
+          echo "BUILD_NUMBER=${{BUILD_NUMBER}}" >> "$WORKSPACE"/props_build
+          echo "TESTS_BRANCH=${{TESTS_BRANCH}}" >> "$WORKSPACE"/props_build
+          {%- endraw %}
+          {%- for module in project.modules %}
+          echo "{{ module.name }}_MVN_NAME={% raw %}${{{% endraw %}{{ module.name }}_MVN_NAME}}" >> "$WORKSPACE"/props_build
+          echo "{{ module.name }}_MVN_VERSION={% raw %}${{{% endraw %}{{ module.name }}_MVN_VERSION}}" >> "$WORKSPACE"/props_build
+          {%- endfor %}
+      {%- raw %}
+      - maven-builder:
+          name: slave::mvn
+          pom: "pom.xml"
+          goals: clean -X -U install -DskipTests
+    publishers:
+      - archive:
+          artifacts: '**/props_build'
+      - trigger-parameterized-builds:
+          - project:
+              - '{folder}/{app} JUNIT'
+            condition: SUCCESS
+            predefined-parameters: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}
+            {%- raw %}
+            node-parameters: true
+      - description-setter:
+          description: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}
+          {%- raw %}
+          description-for-failed: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}

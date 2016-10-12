@@ -1,0 +1,141 @@
+
+### 01-scm ###
+
+{% raw -%}
+- job-template:
+    name: '{folder}/{app} SCM'
+    description: '{app} SCM'
+    display-name: '{app} SCM'
+    disabled: '{obj:disabled}'
+    parameters:
+      - string:
+          name: BRANCH
+          default: develop
+          description: |
+            Enter branch name which you want to build from.
+      - string:
+          name: PUSH_ARTIFACTS
+          default: 'YES'
+          description: |
+            YES - will push artifacts to artifactory ( default value )
+            NO - disable pushing artifacts to artifactory
+      - string:
+          name: TESTS_BRANCH
+          default: master
+          description: |
+            Enter branch name which you want to run acceptance tests from.
+    logrotate:
+      numToKeep: 30
+    properties:
+      - authorization:
+          '{obj:authorization}'
+      - delivery-pipeline:
+          stage: 'BUILD'
+          task: '{app} SCM'
+    node: '{node}'
+    workspace: '/opt/workspace/{folder}/{app}-BUILD'
+    scm:
+      - git:
+{%- endraw %}
+          {% for repo in project.repositories -%}
+          {%- if repo.name == 'application' -%}
+          url: '{obj:{{ repo.name }}_repo}'
+          credentials-id: 430e72d0-c894-4aa2-8284-bde264d94ee9
+          branches:
+            - '$BRANCH'
+          browser: bitbucketweb
+          browser-url: {% raw %}'{{% endraw %}{{ repo.name }}_url}'
+          timeout: 5
+          wipe-workspace: true
+          clean:
+            before: true
+          skip-tag: true
+          {%- endif -%}
+          {%- endfor %}
+    triggers:
+      - pollscm: "H/5 * * * *"
+    wrappers:
+      - ansicolor:
+          colormap: xterm
+      - timestamps
+      - env-script:
+          script-content: |
+              echo "PARSE_VERSION=$(mvn --batch-mode -f pom.xml help:evaluate -Dexpression=project.version 2>/dev/null | grep -Ev "^\[|Downloa" )"
+              echo "BUILD_GIT_COMMIT=$(git rev-parse --short HEAD)"
+              {%- for module in project.modules %}
+              echo "{{module.name}}_MVN_NAME=$(mvn --batch-mode -f {{module.pom}} -pl {{module.name}} help:evaluate -Dexpression=project.artifactId 2>/dev/null | grep -Ev "^\[|Downloa" )"
+              echo "{{module.name}}_MVN_VERSION=$(mvn --batch-mode -f {{module.pom}} -pl {{module.name}} help:evaluate -Dexpression=project.version 2>/dev/null | grep -Ev "^\[|Downloa" )"
+              {%- endfor %}
+      {%- raw %}
+      - delivery-pipeline:
+          version-template: '$BRANCH-$PARSE_VERSION-$BUILD_GIT_COMMIT-b$BUILD_NUMBER'
+          set-display-name: true
+    builders:
+      - shell: |
+          PUSH_ARTIFACTS=${{PUSH_ARTIFACTS^^}}
+          if [[ "$PUSH_ARTIFACTS" = "YES" ]]; then
+          touch $WORKSPACE/push.prop
+          elif [[ "$PUSH_ARTIFACTS" = "NO" ]]; then
+          touch $WORKSPACE/dont_push.prop
+          else
+          echo "PLEASE CHECK PUSH_ARTIFACTS VARIABLE VALUE [ YES | NO ]"
+          exit 1
+          fi
+    publishers:
+      - trigger-parameterized-builds:
+          - project:
+              - '{folder}/{app}-BUILD'
+            condition: SUCCESS
+            property-file: push.prop
+            fail-on-missing: true
+            predefined-parameters: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}
+            {%- raw %}
+            node-parameters: true
+          - project:
+              - '{folder}/{app}-BUILD-NO-PUSH'
+            condition: SUCCESS
+            property-file: dont_push.prop
+            fail-on-missing: true
+            predefined-parameters: |
+              PARSE_VERSION=${{PARSE_VERSION}}
+              BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+              BRANCH=${{BRANCH}}
+              TESTS_BRANCH=${{TESTS_BRANCH}}
+              {%- endraw %}
+              {%- for module in project.modules %}
+              {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+              {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+              {%- endfor %}
+            {%- raw %}
+            node-parameters: true
+      - description-setter:
+          description: |
+            PARSE_VERSION=${{PARSE_VERSION}}
+            BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+            BRANCH=${{BRANCH}}
+            TESTS_BRANCH=${{TESTS_BRANCH}}
+            {%- endraw %}
+            {%- for module in project.modules %}
+            {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+            {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+            {%- endfor %}
+          {%- raw %}
+          description-for-failed: |
+            PARSE_VERSION=${{PARSE_VERSION}}
+            BUILD_GIT_COMMIT=${{BUILD_GIT_COMMIT}}
+            BRANCH=${{BRANCH}}
+            TESTS_BRANCH=${{TESTS_BRANCH}}
+            {%- endraw %}
+            {%- for module in project.modules %}
+            {{module.name}}_MVN_NAME=${% raw %}{{{% endraw %}{{module.name}}_MVN_NAME}}
+            {{module.name}}_MVN_VERSION=${% raw %}{{{% endraw %}{{module.name}}_MVN_VERSION}}
+            {%- endfor %}
